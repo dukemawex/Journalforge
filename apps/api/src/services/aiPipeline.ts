@@ -18,10 +18,34 @@ function stripMarkdownFences(text: string): string {
     .trim();
 }
 
+function safeJsonTruncate(raw: string): string {
+  // Scan backwards through every } and ] position and return the first
+  // substring that parses as valid JSON.  This handles the case where a
+  // closing brace/bracket appears AFTER an unterminated string (e.g.
+  // `"content": "text cut off here}`), which a simple lastIndexOf cannot
+  // detect.
+  for (let i = raw.length - 1; i >= 0; i--) {
+    const ch = raw[i];
+    if (ch === '}' || ch === ']') {
+      const candidate = raw.substring(0, i + 1);
+      try {
+        JSON.parse(candidate);
+        return candidate;
+      } catch {
+        // This position sits inside or after an incomplete token; keep scanning.
+      }
+    }
+  }
+  // No valid JSON boundary found — return the original string and let the
+  // caller's JSON.parse produce a meaningful error.
+  return raw;
+}
+
 async function callOpenRouter(
   systemPrompt: string,
   userMessage: string,
-  stageName: string
+  stageName: string,
+  maxTokens: number
 ): Promise<unknown> {
   const maxAttempts = 3;
   let lastError: Error | null = null;
@@ -38,7 +62,7 @@ async function callOpenRouter(
         },
         body: JSON.stringify({
           model: config.aiModel,
-          max_tokens: 4096,
+          max_tokens: maxTokens,
           temperature: 0,
           messages: [
             { role: 'system', content: systemPrompt },
@@ -69,7 +93,7 @@ async function callOpenRouter(
       }
 
       const cleaned = stripMarkdownFences(content);
-      return JSON.parse(cleaned);
+      return JSON.parse(safeJsonTruncate(cleaned));
     } catch (err) {
       lastError = err instanceof Error ? err : new Error(String(err));
       if (attempt < maxAttempts) {
@@ -91,8 +115,13 @@ async function callOpenRouter(
 export async function runParserStage(
   manuscriptContent: DocumentContent
 ): Promise<ParsedDocument> {
-  const userMessage = JSON.stringify(manuscriptContent);
-  const result = await callOpenRouter(parserPrompt, userMessage, 'Parser');
+  const truncatedManuscript = {
+    ...manuscriptContent,
+    rawText: manuscriptContent.rawText.substring(0, 12000),
+    referencesBlock: manuscriptContent.referencesBlock.substring(0, 3000),
+  };
+  const userMessage = JSON.stringify(truncatedManuscript);
+  const result = await callOpenRouter(parserPrompt, userMessage, 'Parser', 8192);
   return result as ParsedDocument;
 }
 
@@ -100,11 +129,15 @@ export async function runFormatterStage(
   parsedDocument: ParsedDocument,
   journalSpecContent: DocumentContent
 ): Promise<FormattedDocument> {
+  const truncatedJournalSpec = {
+    ...journalSpecContent,
+    rawText: journalSpecContent.rawText.substring(0, 6000),
+  };
   const userMessage = JSON.stringify({
     parsedDocument,
-    journalSpecContent,
+    journalSpecContent: truncatedJournalSpec,
   });
-  const result = await callOpenRouter(formatterPrompt, userMessage, 'Formatter');
+  const result = await callOpenRouter(formatterPrompt, userMessage, 'Formatter', 6144);
   return result as FormattedDocument;
 }
 
@@ -112,6 +145,6 @@ export async function runAssemblerStage(
   formattedDocument: FormattedDocument
 ): Promise<AssemblyActionList> {
   const userMessage = JSON.stringify(formattedDocument);
-  const result = await callOpenRouter(assemblerPrompt, userMessage, 'Assembler');
+  const result = await callOpenRouter(assemblerPrompt, userMessage, 'Assembler', 6144);
   return result as AssemblyActionList;
 }
