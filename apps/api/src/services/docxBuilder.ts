@@ -2,34 +2,28 @@
 import { spawn } from 'child_process';
 import path from 'path';
 import fs from 'fs';
-import { config } from '../config';
 import { AssemblyActionList } from '../types';
 
 const PYTHON_SCRIPT = path.join(__dirname, '..', 'scripts', 'build_docx.py');
 
 export async function buildDocx(
-  jobId: string,
+  _jobId: string,
   actions: AssemblyActionList
-): Promise<string> {
-  const actionsPath = path.join(config.storagePath, `${jobId}-actions.json`);
-  const outputPath = path.join(config.storagePath, `${jobId}-output.docx`);
-
-  fs.writeFileSync(actionsPath, JSON.stringify(actions, null, 2), 'utf8');
-
+): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     const scriptPath = fs.existsSync(PYTHON_SCRIPT)
       ? PYTHON_SCRIPT
       : path.join(process.cwd(), 'src', 'scripts', 'build_docx.py');
 
-    const child = spawn('python3', [scriptPath, actionsPath, outputPath], {
-      stdio: ['ignore', 'pipe', 'pipe'],
+    const child = spawn('python3', [scriptPath, '-', '-'], {
+      stdio: ['pipe', 'pipe', 'pipe'],
     });
 
-    let stdout = '';
+    const stdoutChunks: Buffer[] = [];
     let stderr = '';
 
     child.stdout.on('data', (data: Buffer) => {
-      stdout += data.toString();
+      stdoutChunks.push(data);
     });
 
     child.stderr.on('data', (data: Buffer) => {
@@ -37,13 +31,6 @@ export async function buildDocx(
     });
 
     child.on('close', (code) => {
-      // Clean up actions temp file
-      try {
-        fs.unlinkSync(actionsPath);
-      } catch {
-        // ignore cleanup errors
-      }
-
       if (code !== 0) {
         reject(
           new Error(
@@ -53,17 +40,25 @@ export async function buildDocx(
         return;
       }
 
-      if (!fs.existsSync(outputPath)) {
-        reject(new Error('build_docx.py completed but output file was not created'));
+      const outputBuffer = Buffer.concat(stdoutChunks);
+      if (outputBuffer.length === 0) {
+        reject(new Error('build_docx.py completed but no DOCX data was returned'));
         return;
       }
 
-      console.log(`DOCX built successfully: ${stdout.trim()}`);
-      resolve(outputPath);
+      resolve(outputBuffer);
     });
 
     child.on('error', (err) => {
       reject(new Error(`Failed to spawn build_docx.py: ${err.message}`));
     });
+
+    try {
+      child.stdin.write(JSON.stringify(actions));
+      child.stdin.end();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      reject(new Error(`Failed to send actions to build_docx.py: ${message}`));
+    }
   });
 }

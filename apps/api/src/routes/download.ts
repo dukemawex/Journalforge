@@ -1,9 +1,8 @@
 // apps/api/src/routes/download.ts
 import { Router, Request, Response, NextFunction } from 'express';
 import { PrismaClient } from '@prisma/client';
-import path from 'path';
-import fs from 'fs';
 import { NotFoundError, JobNotCompleteError } from '../middleware/errorHandler';
+import { downloadFromSpaces } from '../services/fileStorage';
 
 const router = Router();
 const prisma = new PrismaClient();
@@ -24,23 +23,14 @@ router.get('/:id', async (req: Request, res: Response, next: NextFunction) => {
       );
     }
 
-    if (!fs.existsSync(job.outputPath)) {
-      throw new NotFoundError(`Output file for job ${job.id} not found on disk`);
-    }
+    const buffer = await downloadFromSpaces(job.outputPath);
 
-    const filename = `journalforge-${job.id}.docx`;
-    res.setHeader(
-      'Content-Disposition',
-      `attachment; filename="${filename}"`
-    );
+    res.setHeader('Content-Disposition', 'attachment; filename="formatted-manuscript.docx"');
     res.setHeader(
       'Content-Type',
       'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
     );
-    res.setHeader('Content-Length', fs.statSync(job.outputPath).size);
-
-    const fileStream = fs.createReadStream(job.outputPath);
-    fileStream.pipe(res);
+    res.send(buffer);
   } catch (err) {
     next(err);
   }

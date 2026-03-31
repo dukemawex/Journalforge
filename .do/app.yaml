@@ -32,6 +32,21 @@ spec:
         - key: STORAGE_PATH
           scope: RUN_TIME
           value: /tmp/journalforge
+        - key: DO_SPACES_KEY
+          scope: RUN_TIME
+          type: SECRET
+        - key: DO_SPACES_SECRET
+          scope: RUN_TIME
+          type: SECRET
+        - key: DO_SPACES_BUCKET
+          scope: RUN_TIME
+          value: journalforge-files
+        - key: DO_SPACES_REGION
+          scope: RUN_TIME
+          value: nyc3
+        - key: DO_SPACES_ENDPOINT
+          scope: RUN_TIME
+          value: https://nyc3.digitaloceanspaces.com
         - key: API_SECRET
           scope: RUN_TIME
           type: SECRET

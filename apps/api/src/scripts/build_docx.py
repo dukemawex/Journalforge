@@ -3,7 +3,7 @@
 build_docx.py — JournalForge DOCX assembly script.
 
 Usage:
-    python3 build_docx.py <actions_json_path> <output_docx_path>
+    python3 build_docx.py <actions_json_path|-> <output_docx_path|->
 
 Reads a JSON array of assembly action objects produced by the AI assembler stage
 and constructs a python-docx Document, writing the result to <output_docx_path>.
@@ -19,6 +19,7 @@ NOTE on display equations:
 import sys
 import json
 import os
+import io
 from docx import Document
 from docx.shared import Pt, Cm, RGBColor
 from docx.enum.text import WD_ALIGN_PARAGRAPH
@@ -261,18 +262,24 @@ HANDLERS = {
 
 def main():
     if len(sys.argv) != 3:
-        print("Usage: python3 build_docx.py <actions_json_path> <output_docx_path>", file=sys.stderr)
+        print("Usage: python3 build_docx.py <actions_json_path|-> <output_docx_path|->", file=sys.stderr)
         sys.exit(1)
 
     actions_path = sys.argv[1]
     output_path = sys.argv[2]
 
-    if not os.path.exists(actions_path):
-        print(f"Actions file not found: {actions_path}", file=sys.stderr)
-        sys.exit(1)
-
-    with open(actions_path, "r", encoding="utf-8") as f:
-        actions = json.load(f)
+    if actions_path == "-":
+        try:
+            actions = json.loads(sys.stdin.read())
+        except json.JSONDecodeError as e:
+            print(f"Failed to parse actions JSON from stdin: {e}", file=sys.stderr)
+            sys.exit(1)
+    else:
+        if not os.path.exists(actions_path):
+            print(f"Actions file not found: {actions_path}", file=sys.stderr)
+            sys.exit(1)
+        with open(actions_path, "r", encoding="utf-8") as f:
+            actions = json.load(f)
 
     if not isinstance(actions, list):
         print("Actions JSON must be an array.", file=sys.stderr)
@@ -301,9 +308,14 @@ def main():
             print(f"Error processing action '{action_type}' at index {i}: {e}", file=sys.stderr)
             sys.exit(1)
 
-    os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
-    doc.save(output_path)
-    print(f"Document saved to {output_path}")
+    if output_path == "-":
+        output = io.BytesIO()
+        doc.save(output)
+        sys.stdout.buffer.write(output.getvalue())
+    else:
+        os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
+        doc.save(output_path)
+        print(f"Document saved to {output_path}")
 
 
 if __name__ == "__main__":
