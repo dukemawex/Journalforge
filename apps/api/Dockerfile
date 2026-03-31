@@ -35,4 +35,4 @@ COPY src/scripts/build_docx.py ./dist/scripts/build_docx.py
 ENV NODE_ENV=production
 EXPOSE 8080
 
-CMD ["node", "dist/index.js"]
+CMD ["sh", "-c", "MAX_RETRIES=10; i=0; until npx prisma migrate deploy --schema=./prisma/schema.prisma; do i=$((i+1)); echo \"Migration failed (attempt $i/$MAX_RETRIES), retrying in 5s...\"; [ $i -ge $MAX_RETRIES ] && echo 'Max retries reached, exiting.' && exit 1; sleep 5; done && node dist/index.js"]
