@@ -9,7 +9,7 @@ spec:
       http_port: 8080
       instance_size_slug: basic-xs
       instance_count: 1
-      run_command: sh -c "until npx prisma migrate deploy; do echo 'Retrying migration in 5s...'; sleep 5; done && node dist/index.js"
+      run_command: sh -c "until npx prisma migrate deploy --schema=./prisma/schema.prisma; do echo 'Retrying migration in 5s...'; sleep 5; done && node dist/index.js"
       envs:
         - key: DATABASE_URL
           scope: RUN_TIME
