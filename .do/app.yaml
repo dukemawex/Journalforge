@@ -13,7 +13,7 @@ spec:
       envs:
         - key: DATABASE_URL
           scope: RUN_TIME
-          value: ${journalforge-db.DATABASE_URL}
+          type: SECRET
         - key: REDIS_URL
           scope: RUN_TIME
           value: ${journalforge-cache.REDIS_URL}
@@ -39,12 +39,6 @@ spec:
         http_path: /health
 
   databases:
-    - name: journalforge-db
-      engine: PG
-      version: "16"
-      size: db-s-dev-database
-      num_nodes: 1
-
     - name: journalforge-cache
       engine: REDIS
       version: "7"
