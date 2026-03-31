@@ -15,6 +15,8 @@ const app = express();
 
 // Global middleware
 app.use(corsMiddleware);
+// Explicitly handle preflight OPTIONS for every route so they never reach authMiddleware
+app.options('*', corsMiddleware);
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
