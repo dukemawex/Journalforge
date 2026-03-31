@@ -5,14 +5,14 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-COPY apps/api/package.json apps/api/package-lock.json* ./
+COPY package.json package-lock.json* ./
 RUN npm install --frozen-lockfile 2>/dev/null || npm install
 
-COPY apps/api/prisma ./prisma
+COPY prisma ./prisma
 RUN npx prisma generate
 
-COPY apps/api/tsconfig.json ./
-COPY apps/api/src ./src
+COPY tsconfig.json ./
+COPY src ./src
 RUN npm run build
 
 # ---- Stage 2: production ----
@@ -30,7 +30,7 @@ COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/prisma ./prisma
 
 # Copy the Python build script
-COPY apps/api/src/scripts/build_docx.py ./dist/scripts/build_docx.py
+COPY src/scripts/build_docx.py ./dist/scripts/build_docx.py
 
 ENV NODE_ENV=production
 EXPOSE 8080
