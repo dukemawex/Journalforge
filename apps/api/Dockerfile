@@ -8,7 +8,7 @@ WORKDIR /app
 COPY package.json package-lock.json* ./
 COPY prisma ./prisma
 RUN npm install --frozen-lockfile 2>/dev/null || npm install
-RUN npx prisma generate
+RUN npx prisma generate --schema=./prisma/schema.prisma
 
 COPY tsconfig.json ./
 COPY src ./src
