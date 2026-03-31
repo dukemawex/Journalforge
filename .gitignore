@@ -16,5 +16,4 @@ __pycache__/
 *.pyo
 .python-version
 /tmp/
-apps/api/package-lock.json
 apps/frontend/package-lock.json
