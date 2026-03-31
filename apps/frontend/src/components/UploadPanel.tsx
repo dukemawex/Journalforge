@@ -114,6 +114,8 @@ export function UploadPanel() {
   const [manuscript, setManuscript] = useState<File | null>(null);
   const [journalSpec, setJournalSpec] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [uploadPercent, setUploadPercent] = useState(0);
+  const [uploadComplete, setUploadComplete] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const canSubmit = manuscript !== null && journalSpec !== null && !uploading;
@@ -121,13 +123,20 @@ export function UploadPanel() {
   async function handleSubmit() {
     if (!manuscript || !journalSpec) return;
     setUploading(true);
+    setUploadPercent(0);
+    setUploadComplete(false);
     setError(null);
     try {
-      const { jobId } = await uploadFiles(manuscript, journalSpec);
+      const { jobId } = await uploadFiles(manuscript, journalSpec, (percent) => {
+        setUploadPercent(percent);
+      });
+      setUploadComplete(true);
       router.push(`/jobs/${jobId}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Upload failed');
       setUploading(false);
+      setUploadPercent(0);
+      setUploadComplete(false);
     }
   }
 
@@ -181,19 +190,32 @@ export function UploadPanel() {
       >
         {uploading ? (
           <span className="flex items-center gap-2">
-            <svg
-              className="animate-spin"
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-            >
-              <circle cx="12" cy="12" r="10" opacity="0.25" />
-              <path d="M12 2a10 10 0 0 1 10 10" />
-            </svg>
-            Uploading…
+            {uploadComplete ? (
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.5"
+              >
+                <polyline points="20 6 9 17 4 12" />
+              </svg>
+            ) : (
+              <svg
+                className="animate-spin"
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+              >
+                <circle cx="12" cy="12" r="10" opacity="0.25" />
+                <path d="M12 2a10 10 0 0 1 10 10" />
+              </svg>
+            )}
+            {uploadComplete ? 'Upload Complete' : `Uploading… ${uploadPercent}%`}
           </span>
         ) : (
           'Submit for Formatting'

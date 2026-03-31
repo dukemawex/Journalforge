@@ -14,24 +14,46 @@ function getHeaders(includeContentType = false): HeadersInit {
 
 export async function uploadFiles(
   manuscript: File,
-  journalSpec: File
+  journalSpec: File,
+  onProgress?: (percent: number) => void
 ): Promise<{ jobId: string; pollingUrl: string }> {
   const formData = new FormData();
   formData.append('manuscript', manuscript);
   formData.append('journalSpec', journalSpec);
 
-  const response = await fetch(`${API_URL}/upload`, {
-    method: 'POST',
-    headers: getHeaders(),
-    body: formData,
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+
+    xhr.upload.addEventListener('progress', (event) => {
+      if (event.lengthComputable && onProgress) {
+        onProgress(Math.round((event.loaded / event.total) * 100));
+      }
+    });
+
+    xhr.addEventListener('load', () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        try {
+          resolve(JSON.parse(xhr.responseText) as { jobId: string; pollingUrl: string });
+        } catch {
+          reject(new Error('Failed to parse server response'));
+        }
+      } else {
+        try {
+          const error = JSON.parse(xhr.responseText) as { error?: string };
+          reject(new Error(error.error ?? 'Upload failed'));
+        } catch {
+          reject(new Error('Upload failed'));
+        }
+      }
+    });
+
+    xhr.addEventListener('error', () => reject(new Error('Network error during upload')));
+    xhr.addEventListener('abort', () => reject(new Error('Upload cancelled')));
+
+    xhr.open('POST', `${API_URL}/upload`);
+    xhr.setRequestHeader('X-API-Secret', API_SECRET);
+    xhr.send(formData);
   });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: 'Upload failed' }));
-    throw new Error((error as { error?: string }).error ?? 'Upload failed');
-  }
-
-  return response.json();
 }
 
 export async function fetchJob(jobId: string): Promise<JobResponse> {
