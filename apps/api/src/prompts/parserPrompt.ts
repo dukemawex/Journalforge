@@ -103,4 +103,5 @@ Parse every entry in the reference list. Extract the citekey from how the refere
 abstract.word_count must be computed by counting space-delimited tokens in the abstract text.
 within_limit is true if word_count is 200 or fewer.
 If a field cannot be determined from the source text, use null. Never fabricate content.
-Do not alter any scientific content. Extract only.`;
+Do not alter any scientific content. Extract only.
+If the manuscript is long, prioritise extracting metadata, abstract, references, and section headings. Truncate individual paragraph content blocks to 500 characters each to stay within response limits. Always close all JSON brackets and braces properly.`;
