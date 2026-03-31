@@ -42,8 +42,8 @@ Then add_metadata_label for Abstract followed by the abstract paragraph.
 Then add_metadata_label for Keywords followed by a single add_paragraph with keywords joined by semicolons.
 Then add_metadata_label for Highlights followed by individual add_paragraph actions for each highlight.
 Then add_section_break with type page.
-Then all body sections in compliance order.
-For each section: add_section_heading then its content blocks. Each paragraph is a separate add_paragraph. Each display equation is add_display_equation. Each figure reference in text remains in the paragraph content. Figure placeholders are added after the paragraph that first mentions them. Table placeholders are added after the paragraph that first mentions them.
-After all body sections: add_section_break then add_metadata_label for References then one add_reference_entry per reference in formatted_references order.
+Then all body sections in compliance order. Only emit sections that are present in formatted_sections; do not add, invent, or pad any section not in the input.
+For each section: add_section_heading then its content blocks. Each paragraph is a separate add_paragraph. Each display equation is add_display_equation placed immediately after the paragraph that first references it. Every equation in formatted_equations must appear as an add_display_equation action — do not omit any equation. Each figure reference in text remains in the paragraph content. Figure placeholders are added after the paragraph that first mentions them. Table placeholders are added after the paragraph that first mentions them.
+After all body sections: add_section_break then add_metadata_label for References then one add_reference_entry per reference in formatted_references order. Emit every reference in formatted_references; do not drop any.
 Inline equations remain embedded in paragraph content strings using the LaTeX notation surrounded by dollar signs.
 Every action object must include every field defined for its type. No nulls on required fields.`;
