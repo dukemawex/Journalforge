@@ -1,7 +1,6 @@
 // apps/api/src/routes/jobs.ts
 import { Router, Request, Response, NextFunction } from 'express';
 import { PrismaClient } from '@prisma/client';
-import { fileExists } from '../services/fileStorage';
 import { NotFoundError } from '../middleware/errorHandler';
 
 const router = Router();
@@ -19,8 +18,7 @@ router.get('/:id', async (req: Request, res: Response, next: NextFunction) => {
 
     const downloadReady =
       job.status === 'COMPLETE' &&
-      job.outputPath !== null &&
-      fileExists(job.outputPath);
+      job.outputPath !== null;
 
     res.status(200).json({
       id: job.id,

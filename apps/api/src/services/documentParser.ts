@@ -1,7 +1,7 @@
-// apps/api/src/services/documentParser.ts
-import fs from 'fs';
+import path from 'path';
 import mammoth from 'mammoth';
 import JSZip from 'jszip';
+import { downloadFromSpaces } from './fileStorage';
 import { DocumentContent } from '../types';
 
 // Basic OMML to LaTeX mapping for common constructs
@@ -12,8 +12,8 @@ function ommlToLatex(omml: string): string {
     .trim();
 }
 
-async function parseDocx(filePath: string): Promise<DocumentContent> {
-  const buffer = fs.readFileSync(filePath);
+async function parseDocx(key: string): Promise<DocumentContent> {
+  const buffer = await downloadFromSpaces(key);
 
   // Extract text with structural hints via mammoth
   const result = await mammoth.extractRawText({ buffer });
@@ -64,16 +64,16 @@ async function parseDocx(filePath: string): Promise<DocumentContent> {
     headings,
     equations,
     referencesBlock,
-    filePath,
+    filePath: key,
     fileType: 'docx',
   };
 }
 
-async function parsePdf(filePath: string): Promise<DocumentContent> {
+async function parsePdf(key: string): Promise<DocumentContent> {
   // Dynamic import to avoid issues with pdf-parse's test file detection
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   const pdfParse = require('pdf-parse') as (buffer: Buffer) => Promise<{ text: string }>;
-  const buffer = fs.readFileSync(filePath);
+  const buffer = await downloadFromSpaces(key);
   const data = await pdfParse(buffer);
   const rawText = data.text;
 
@@ -113,17 +113,25 @@ async function parsePdf(filePath: string): Promise<DocumentContent> {
     headings,
     equations,
     referencesBlock,
-    filePath,
+    filePath: key,
     fileType: 'pdf',
   };
 }
 
-export async function parseDocument(filePath: string): Promise<DocumentContent> {
-  const ext = filePath.toLowerCase().split('.').pop();
-  if (ext === 'docx') {
-    return parseDocx(filePath);
-  } else if (ext === 'pdf') {
-    return parsePdf(filePath);
+export async function parseDocument(key: string, mimeType: string): Promise<DocumentContent> {
+  const normalizedMime = mimeType.toLowerCase();
+  const ext = path.extname(key).toLowerCase();
+
+  if (
+    normalizedMime === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
+    ext === '.docx'
+  ) {
+    return parseDocx(key);
   }
-  throw new Error(`Unsupported file type: ${ext}`);
+
+  if (normalizedMime === 'application/pdf' || ext === '.pdf') {
+    return parsePdf(key);
+  }
+
+  throw new Error(`Unsupported file type for key ${key}: mime=${mimeType}, ext=${ext}`);
 }

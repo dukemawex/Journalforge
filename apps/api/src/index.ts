@@ -4,7 +4,6 @@ import { config } from './config';
 import { corsMiddleware } from './middleware/cors';
 import { authMiddleware } from './middleware/auth';
 import { errorHandler } from './middleware/errorHandler';
-import { ensureStorageDir } from './services/fileStorage';
 import { startWorker } from './services/jobQueue';
 import healthRouter from './routes/health';
 import uploadRouter from './routes/upload';
@@ -32,7 +31,6 @@ app.use('/download', authMiddleware, downloadRouter);
 app.use(errorHandler);
 
 // Bootstrap
-ensureStorageDir();
 startWorker();
 
 app.listen(config.port, () => {

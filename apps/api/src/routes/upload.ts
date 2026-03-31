@@ -1,21 +1,17 @@
-// apps/api/src/routes/upload.ts
 import { Router, Request, Response, NextFunction } from 'express';
 import multer from 'multer';
 import path from 'path';
+import { randomUUID } from 'crypto';
 import { PrismaClient } from '@prisma/client';
 import { config } from '../config';
 import { manuscriptQueue } from '../services/jobQueue';
-import { ensureStorageDir } from '../services/fileStorage';
+import { generateSpacesKey, uploadToSpaces } from '../services/fileStorage';
 import { FileTypeError } from '../middleware/errorHandler';
 
 const router = Router();
 const prisma = new PrismaClient();
 
 const ALLOWED_EXTENSIONS = ['.docx', '.pdf'];
-const ALLOWED_MIMETYPES = [
-  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-  'application/pdf',
-];
 
 function fileFilter(
   _req: Request,
@@ -23,33 +19,18 @@ function fileFilter(
   cb: multer.FileFilterCallback
 ): void {
   const ext = path.extname(file.originalname).toLowerCase();
-  if (ALLOWED_EXTENSIONS.includes(ext) && ALLOWED_MIMETYPES.includes(file.mimetype)) {
+  if (ALLOWED_EXTENSIONS.includes(ext)) {
     cb(null, true);
   } else {
     cb(new FileTypeError(`File type not allowed: ${file.mimetype}. Only DOCX and PDF are accepted.`));
   }
 }
 
-ensureStorageDir();
-
-const storage = multer.diskStorage({
-  destination: (_req, _file, cb) => {
-    ensureStorageDir();
-    cb(null, config.storagePath);
-  },
-  filename: (_req, file, cb) => {
-    const ext = path.extname(file.originalname).toLowerCase();
-    const timestamp = Date.now();
-    const random = Math.random().toString(36).slice(2, 8);
-    cb(null, `${timestamp}-${random}${ext}`);
-  },
-});
-
 const upload = multer({
-  storage,
+  storage: multer.memoryStorage(),
   fileFilter,
   limits: {
-    fileSize: config.maxFileSize.manuscript,
+    fileSize: 20 * 1024 * 1024,
   },
 });
 
@@ -82,15 +63,36 @@ router.post(
         return;
       }
 
+      const jobId = randomUUID();
+      const manuscriptExt = path.extname(manuscriptFile.originalname).toLowerCase();
+      const specExt = path.extname(journalSpecFile.originalname).toLowerCase();
+
+      const manuscriptKey = generateSpacesKey(jobId, `manuscript${manuscriptExt}`);
+      const specKey = generateSpacesKey(jobId, `journal-spec${specExt}`);
+
+      await uploadToSpaces(manuscriptKey, manuscriptFile.buffer, manuscriptFile.mimetype);
+      await uploadToSpaces(specKey, journalSpecFile.buffer, journalSpecFile.mimetype);
+
       const job = await prisma.job.create({
         data: {
+          id: jobId,
           status: 'PENDING',
-          manuscriptPath: manuscriptFile.path,
-          journalSpecPath: journalSpecFile.path,
+          manuscriptPath: manuscriptKey,
+          journalSpecPath: specKey,
         },
       });
 
-      await manuscriptQueue.add('process', { jobId: job.id }, { jobId: job.id });
+      await manuscriptQueue.add(
+        'process',
+        {
+          jobId: job.id,
+          manuscriptKey,
+          manuscriptName: manuscriptFile.originalname,
+          specKey,
+          specName: journalSpecFile.originalname,
+        },
+        { jobId: job.id }
+      );
 
       res.status(201).json({
         jobId: job.id,
