@@ -1,0 +1,20 @@
+# .gitignore
+node_modules/
+dist/
+.env
+.env.local
+*.log
+.DS_Store
+.next/
+out/
+build/
+coverage/
+*.tsbuildinfo
+prisma/migrations/
+__pycache__/
+*.pyc
+*.pyo
+.python-version
+/tmp/
+apps/api/package-lock.json
+apps/frontend/package-lock.json
