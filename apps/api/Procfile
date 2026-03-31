@@ -1,0 +1,1 @@
+web: sh -c "until npx prisma migrate deploy; do echo 'Retrying migration in 5s...'; sleep 5; done && node dist/index.js"
