@@ -6,9 +6,8 @@ FROM node:20-alpine AS builder
 WORKDIR /app
 
 COPY package.json package-lock.json* ./
-RUN npm install --frozen-lockfile 2>/dev/null || npm install
-
 COPY prisma ./prisma
+RUN npm install --frozen-lockfile 2>/dev/null || npm install
 RUN npx prisma generate
 
 COPY tsconfig.json ./
