@@ -1,41 +1,76 @@
 // apps/api/src/services/docxBuilder.ts
-import { spawn, spawnSync } from 'child_process';
+import { spawn } from 'child_process';
 import path from 'path';
 import fs from 'fs';
 import { AssemblyActionList } from '../types';
 
 const PYTHON_SCRIPT = path.join(__dirname, '..', 'scripts', 'build_docx.py');
 let pythonDocxChecked = false;
+let pythonDocxCheckPromise: Promise<void> | null = null;
 
-function ensurePythonDocxAvailable(): void {
+function runPython(command: string[]): Promise<{ code: number | null; stderr: string }> {
+  return new Promise((resolve) => {
+    const proc = spawn('python3', command, { stdio: ['ignore', 'ignore', 'pipe'] });
+    let stderr = '';
+
+    proc.stderr.on('data', (data: Buffer) => {
+      stderr += data.toString();
+    });
+
+    proc.on('close', (code) => {
+      resolve({ code, stderr });
+    });
+
+    proc.on('error', (err) => {
+      resolve({ code: 1, stderr: err.message });
+    });
+  });
+}
+
+async function ensurePythonDocxAvailable(): Promise<void> {
   if (pythonDocxChecked) return;
+  if (pythonDocxCheckPromise) return pythonDocxCheckPromise;
 
-  const check = spawnSync('python3', ['-c', 'import docx'], {
-    encoding: 'utf8',
-  });
-  if (check.status === 0) {
+  pythonDocxCheckPromise = (async () => {
+    const check = await runPython(['-c', 'import docx']);
+    if (check.code === 0) {
+      pythonDocxChecked = true;
+      return;
+    }
+
+    const install = await runPython([
+      '-m',
+      'pip',
+      'install',
+      '--user',
+      '--disable-pip-version-check',
+      '--no-input',
+      'python-docx',
+      'lxml',
+    ]);
+
+    if (install.code !== 0) {
+      const details = install.stderr.trim() || check.stderr.trim() || 'unknown error';
+      throw new Error(
+        `Python dependency python-docx is required to build DOCX files. Failed to install automatically: ${details}`
+      );
+    }
+
     pythonDocxChecked = true;
-    return;
-  }
+  })();
 
-  const install = spawnSync('python3', ['-m', 'pip', 'install', '--user', 'python-docx', 'lxml'], {
-    encoding: 'utf8',
-  });
-  if (install.status !== 0) {
-    const details = install.stderr?.trim() || check.stderr?.trim() || 'unknown error';
-    throw new Error(
-      `Python dependency python-docx is required to build DOCX files. Failed to install automatically: ${details}`
-    );
+  try {
+    await pythonDocxCheckPromise;
+  } finally {
+    pythonDocxCheckPromise = null;
   }
-
-  pythonDocxChecked = true;
 }
 
 export async function buildDocx(
   _jobId: string,
   actions: AssemblyActionList
 ): Promise<Buffer> {
-  ensurePythonDocxAvailable();
+  await ensurePythonDocxAvailable();
 
   return new Promise((resolve, reject) => {
     const scriptPath = fs.existsSync(PYTHON_SCRIPT)
