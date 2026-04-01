@@ -1,9 +1,9 @@
 // apps/api/src/services/docxBuilder.ts
-import { spawn } from 'child_process';
+import { spawn, spawnSync } from 'child_process';
 import path from 'path';
 import fs from 'fs';
 import { AssemblyActionList } from '../types';
-import { AIPipelineError } from '../middleware/errorHandler';
+import { AIPipelineError as PipelineError } from '../middleware/errorHandler';
 
 const PYTHON_SCRIPT = path.join(__dirname, '..', 'scripts', 'build_docx.py');
 
@@ -11,6 +11,16 @@ export async function buildDocx(
   _jobId: string,
   actions: AssemblyActionList
 ): Promise<Buffer> {
+  const checkResult = spawnSync('python3', [
+    '-c', 'from docx import Document'
+  ]);
+  if (checkResult.status !== 0) {
+    throw new PipelineError(
+      'python-docx is not installed in this environment. ' +
+      'Rebuild the Docker image to fix this.'
+    );
+  }
+
   return new Promise((resolve, reject) => {
     const scriptPath = fs.existsSync(PYTHON_SCRIPT)
       ? PYTHON_SCRIPT
@@ -34,7 +44,7 @@ export async function buildDocx(
     child.on('close', (code) => {
       if (code !== 0) {
         reject(
-          new AIPipelineError(
+          new PipelineError(
             `build_docx.py exited with code ${code}. stderr: ${stderr.trim()}`
           )
         );
@@ -51,7 +61,7 @@ export async function buildDocx(
     });
 
     child.on('error', (err) => {
-      reject(new AIPipelineError(`Failed to spawn build_docx.py: ${err.message}`));
+      reject(new PipelineError(`Failed to spawn build_docx.py: ${err.message}`));
     });
 
     try {
@@ -59,7 +69,7 @@ export async function buildDocx(
       child.stdin.end();
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      reject(new AIPipelineError(`Failed to send actions to build_docx.py: ${message}`));
+      reject(new PipelineError(`Failed to send actions to build_docx.py: ${message}`));
     }
   });
 }

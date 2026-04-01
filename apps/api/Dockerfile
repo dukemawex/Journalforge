@@ -1,9 +1,12 @@
 # apps/api/Dockerfile
 
 # ---- Stage 1: builder ----
-FROM node:20-alpine AS builder
+FROM node:20-slim AS builder
 
 WORKDIR /app
+
+RUN apt-get update && apt-get install -y openssl \
+    && rm -rf /var/lib/apt/lists/*
 
 COPY package.json package-lock.json* ./
 COPY prisma ./prisma
@@ -15,25 +18,24 @@ COPY src ./src
 RUN npm run build
 
 # ---- Stage 2: production ----
-FROM node:20-alpine AS production
+FROM node:20-slim AS production
 
 # Install Python dependencies for DOCX generation; install openssl for Prisma
-RUN apk add --no-cache \
+RUN apt-get update && apt-get install -y \
     openssl \
     python3 \
-    py3-pip \
-    py3-setuptools \
-    gcc \
-    musl-dev \
+    python3-pip \
     python3-dev \
-    libffi-dev
+    gcc \
+    libffi-dev \
+    && rm -rf /var/lib/apt/lists/*
 
-RUN python3 -m pip install --break-system-packages \
+RUN pip3 install --break-system-packages \
     --no-cache-dir \
     python-docx \
     lxml
 
-RUN python3 -c "from docx import Document; print('python-docx verified')"
+RUN python3 -c "from docx import Document; print('python-docx OK')"
 
 WORKDIR /app
 
