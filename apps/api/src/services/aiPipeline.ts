@@ -41,6 +41,131 @@ function safeJsonTruncate(raw: string): string {
   return raw;
 }
 
+function repairPossiblyTruncatedJson(raw: string): string {
+  let repaired = '';
+  const stack: Array<'{' | '['> = [];
+  let inString = false;
+  let escaped = false;
+
+  for (const ch of raw) {
+    repaired += ch;
+
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+      if (ch === '\\') {
+        escaped = true;
+        continue;
+      }
+      if (ch === '"') {
+        inString = false;
+      }
+      continue;
+    }
+
+    if (ch === '"') {
+      inString = true;
+      continue;
+    }
+
+    if (ch === '{' || ch === '[') {
+      stack.push(ch);
+      continue;
+    }
+
+    if (ch === '}' || ch === ']') {
+      const expectedOpen = ch === '}' ? '{' : '[';
+      if (stack.length > 0 && stack[stack.length - 1] === expectedOpen) {
+        stack.pop();
+      }
+    }
+  }
+
+  if (inString) {
+    repaired += '"';
+  }
+
+  let withoutDanglingCommas = '';
+  inString = false;
+  escaped = false;
+  for (let i = 0; i < repaired.length; i++) {
+    const ch = repaired[i];
+
+    if (inString) {
+      withoutDanglingCommas += ch;
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+      if (ch === '\\') {
+        escaped = true;
+        continue;
+      }
+      if (ch === '"') {
+        inString = false;
+      }
+      continue;
+    }
+
+    if (ch === '"') {
+      inString = true;
+      withoutDanglingCommas += ch;
+      continue;
+    }
+
+    if (ch === ',') {
+      let j = i + 1;
+      while (j < repaired.length && /\s/.test(repaired[j])) {
+        j++;
+      }
+
+      if (j >= repaired.length || repaired[j] === '}' || repaired[j] === ']') {
+        continue;
+      }
+    }
+
+    withoutDanglingCommas += ch;
+  }
+
+  repaired = withoutDanglingCommas;
+
+  for (let i = stack.length - 1; i >= 0; i--) {
+    repaired += stack[i] === '{' ? '}' : ']';
+  }
+
+  return repaired;
+}
+
+function tryRecoverJson(parseError: SyntaxError, truncatedRaw: string): unknown {
+  const positionMatch = parseError.message.match(/position (\d+)/);
+  const candidatePrefixes: string[] = [];
+
+  if (positionMatch) {
+    const position = Number(positionMatch[1]);
+    if (Number.isFinite(position) && position >= 0) {
+      candidatePrefixes.push(truncatedRaw.substring(0, position));
+      if (position < truncatedRaw.length) {
+        candidatePrefixes.push(truncatedRaw.substring(0, position + 1));
+      }
+    }
+  }
+
+  candidatePrefixes.push(truncatedRaw);
+
+  for (const candidate of candidatePrefixes) {
+    const repaired = repairPossiblyTruncatedJson(candidate);
+    try {
+      return JSON.parse(repaired);
+    } catch {
+      // Try next candidate.
+    }
+  }
+
+  throw parseError;
+}
+
 async function callOpenRouter(
   systemPrompt: string,
   userMessage: string,
@@ -93,7 +218,16 @@ async function callOpenRouter(
       }
 
       const cleaned = stripMarkdownFences(content);
-      return JSON.parse(safeJsonTruncate(cleaned));
+      const truncated = safeJsonTruncate(cleaned);
+
+      try {
+        return JSON.parse(truncated);
+      } catch (parseError) {
+        if (parseError instanceof SyntaxError) {
+          return tryRecoverJson(parseError, truncated);
+        }
+        throw parseError;
+      }
     } catch (err) {
       lastError = err instanceof Error ? err : new Error(String(err));
       if (attempt < maxAttempts) {
