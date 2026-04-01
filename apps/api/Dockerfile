@@ -18,10 +18,22 @@ RUN npm run build
 FROM node:20-alpine AS production
 
 # Install Python dependencies for DOCX generation; install openssl for Prisma
-RUN apk add --no-cache python3 py3-pip gcc musl-dev python3-dev
-RUN pip3 install --break-system-packages --no-cache-dir python-docx lxml
-RUN python3 -c "from docx import Document; print('python-docx OK')"
-RUN apk add --no-cache openssl
+RUN apk add --no-cache \
+    openssl \
+    python3 \
+    py3-pip \
+    py3-setuptools \
+    gcc \
+    musl-dev \
+    python3-dev \
+    libffi-dev
+
+RUN python3 -m pip install --break-system-packages \
+    --no-cache-dir \
+    python-docx \
+    lxml
+
+RUN python3 -c "from docx import Document; print('python-docx verified')"
 
 WORKDIR /app
 
