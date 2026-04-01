@@ -1,76 +1,25 @@
 // apps/api/src/services/docxBuilder.ts
-import { spawn } from 'child_process';
+import { spawn, spawnSync } from 'child_process';
 import path from 'path';
 import fs from 'fs';
 import { AssemblyActionList } from '../types';
+import { AIPipelineError as PipelineError } from '../middleware/errorHandler';
 
 const PYTHON_SCRIPT = path.join(__dirname, '..', 'scripts', 'build_docx.py');
-let pythonDocxChecked = false;
-let pythonDocxCheckPromise: Promise<void> | null = null;
-
-function runPython(command: string[]): Promise<{ code: number | null; stderr: string }> {
-  return new Promise((resolve) => {
-    const proc = spawn('python3', command, { stdio: ['ignore', 'ignore', 'pipe'] });
-    let stderr = '';
-
-    proc.stderr.on('data', (data: Buffer) => {
-      stderr += data.toString();
-    });
-
-    proc.on('close', (code) => {
-      resolve({ code, stderr });
-    });
-
-    proc.on('error', (err) => {
-      resolve({ code: 1, stderr: err.message });
-    });
-  });
-}
-
-async function ensurePythonDocxAvailable(): Promise<void> {
-  if (pythonDocxChecked) return;
-  if (pythonDocxCheckPromise) return pythonDocxCheckPromise;
-
-  pythonDocxCheckPromise = (async () => {
-    const check = await runPython(['-c', 'import docx']);
-    if (check.code === 0) {
-      pythonDocxChecked = true;
-      return;
-    }
-
-    const install = await runPython([
-      '-m',
-      'pip',
-      'install',
-      '--user',
-      '--disable-pip-version-check',
-      '--no-input',
-      'python-docx',
-      'lxml',
-    ]);
-
-    if (install.code !== 0) {
-      const details = install.stderr.trim() || check.stderr.trim() || 'unknown error';
-      throw new Error(
-        `Python dependency python-docx is required to build DOCX files. Failed to install automatically: ${details}`
-      );
-    }
-
-    pythonDocxChecked = true;
-  })();
-
-  try {
-    await pythonDocxCheckPromise;
-  } finally {
-    pythonDocxCheckPromise = null;
-  }
-}
 
 export async function buildDocx(
   _jobId: string,
   actions: AssemblyActionList
 ): Promise<Buffer> {
-  await ensurePythonDocxAvailable();
+  const checkResult = spawnSync('python3', [
+    '-c', 'from docx import Document'
+  ]);
+  if (checkResult.status !== 0) {
+    throw new PipelineError(
+      'python-docx is not installed in this environment. ' +
+      'Rebuild the Docker image to fix this.'
+    );
+  }
 
   return new Promise((resolve, reject) => {
     const scriptPath = fs.existsSync(PYTHON_SCRIPT)
@@ -95,7 +44,7 @@ export async function buildDocx(
     child.on('close', (code) => {
       if (code !== 0) {
         reject(
-          new Error(
+          new PipelineError(
             `build_docx.py exited with code ${code}. stderr: ${stderr.trim()}`
           )
         );
@@ -112,7 +61,7 @@ export async function buildDocx(
     });
 
     child.on('error', (err) => {
-      reject(new Error(`Failed to spawn build_docx.py: ${err.message}`));
+      reject(new PipelineError(`Failed to spawn build_docx.py: ${err.message}`));
     });
 
     try {
@@ -120,7 +69,7 @@ export async function buildDocx(
       child.stdin.end();
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      reject(new Error(`Failed to send actions to build_docx.py: ${message}`));
+      reject(new PipelineError(`Failed to send actions to build_docx.py: ${message}`));
     }
   });
 }
