@@ -1,15 +1,42 @@
 // apps/api/src/services/docxBuilder.ts
-import { spawn } from 'child_process';
+import { spawn, spawnSync } from 'child_process';
 import path from 'path';
 import fs from 'fs';
 import { AssemblyActionList } from '../types';
 
 const PYTHON_SCRIPT = path.join(__dirname, '..', 'scripts', 'build_docx.py');
+let pythonDocxChecked = false;
+
+function ensurePythonDocxAvailable(): void {
+  if (pythonDocxChecked) return;
+
+  const check = spawnSync('python3', ['-c', 'import docx'], {
+    encoding: 'utf8',
+  });
+  if (check.status === 0) {
+    pythonDocxChecked = true;
+    return;
+  }
+
+  const install = spawnSync('python3', ['-m', 'pip', 'install', '--user', 'python-docx', 'lxml'], {
+    encoding: 'utf8',
+  });
+  if (install.status !== 0) {
+    const details = install.stderr?.trim() || check.stderr?.trim() || 'unknown error';
+    throw new Error(
+      `Python dependency python-docx is required to build DOCX files. Failed to install automatically: ${details}`
+    );
+  }
+
+  pythonDocxChecked = true;
+}
 
 export async function buildDocx(
   _jobId: string,
   actions: AssemblyActionList
 ): Promise<Buffer> {
+  ensurePythonDocxAvailable();
+
   return new Promise((resolve, reject) => {
     const scriptPath = fs.existsSync(PYTHON_SCRIPT)
       ? PYTHON_SCRIPT
