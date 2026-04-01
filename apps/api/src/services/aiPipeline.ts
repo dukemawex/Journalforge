@@ -41,6 +41,88 @@ function safeJsonTruncate(raw: string): string {
   return raw;
 }
 
+function repairPossiblyTruncatedJson(raw: string): string {
+  let repaired = '';
+  const stack: Array<'{' | '['> = [];
+  let inString = false;
+  let escaped = false;
+
+  for (const ch of raw) {
+    repaired += ch;
+
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+      if (ch === '\\') {
+        escaped = true;
+        continue;
+      }
+      if (ch === '"') {
+        inString = false;
+      }
+      continue;
+    }
+
+    if (ch === '"') {
+      inString = true;
+      continue;
+    }
+
+    if (ch === '{' || ch === '[') {
+      stack.push(ch);
+      continue;
+    }
+
+    if (ch === '}' || ch === ']') {
+      const expectedOpen = ch === '}' ? '{' : '[';
+      if (stack[stack.length - 1] === expectedOpen) {
+        stack.pop();
+      }
+    }
+  }
+
+  if (inString) {
+    repaired += '"';
+  }
+
+  repaired = repaired.replace(/,\s*$/, '').replace(/,\s*([}\]])/g, '$1');
+
+  for (let i = stack.length - 1; i >= 0; i--) {
+    repaired += stack[i] === '{' ? '}' : ']';
+  }
+
+  return repaired;
+}
+
+function tryRecoverJson(raw: string, parseError: SyntaxError): unknown {
+  const positionMatch = parseError.message.match(/position (\d+)/);
+  const candidatePrefixes: string[] = [];
+
+  if (positionMatch) {
+    const position = Number(positionMatch[1]);
+    if (Number.isFinite(position) && position > 0) {
+      candidatePrefixes.push(raw.substring(0, position));
+      candidatePrefixes.push(raw.substring(0, position + 1));
+    }
+  }
+
+  candidatePrefixes.push(raw);
+
+  for (const candidate of candidatePrefixes) {
+    const truncated = safeJsonTruncate(candidate);
+    const repaired = repairPossiblyTruncatedJson(truncated);
+    try {
+      return JSON.parse(repaired);
+    } catch {
+      // Try next candidate.
+    }
+  }
+
+  throw parseError;
+}
+
 async function callOpenRouter(
   systemPrompt: string,
   userMessage: string,
@@ -93,7 +175,16 @@ async function callOpenRouter(
       }
 
       const cleaned = stripMarkdownFences(content);
-      return JSON.parse(safeJsonTruncate(cleaned));
+      const truncated = safeJsonTruncate(cleaned);
+
+      try {
+        return JSON.parse(truncated);
+      } catch (parseError) {
+        if (parseError instanceof SyntaxError) {
+          return tryRecoverJson(truncated, parseError);
+        }
+        throw parseError;
+      }
     } catch (err) {
       lastError = err instanceof Error ? err : new Error(String(err));
       if (attempt < maxAttempts) {
